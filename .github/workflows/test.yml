@@ -145,3 +145,139 @@ jobs:
           storage.test_feed_projection_service
       - name: Execute bounded BC production candidate canary
         run: python -m scripts.bc_candidate_canary --execute
+
+
+  ops-capacity-maintenance:
+    name: ops-capacity-maintenance
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'ops/run-worker-validation-now'
+    needs: [governance]
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    env:
+      OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Reclaim only provider-safe physical bloat
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from sqlalchemy import create_engine, text
+          from scripts.db_capacity_maintenance import relation_rewrite_peak_estimate
+          from scripts.db_capacity_guard import PROVIDER_LIMIT_BYTES
+
+          relations = (
+              "public.feed_projection",
+              "public.opportunity_cold_archive",
+              "storage.objects",
+              "public.founder_cv_selections",
+              "public.worker_jobs",
+              "public.source_poll_runs",
+              "public.source_schedules",
+              "public.founder_triage_states",
+              "public.field_provenances",
+              "public.match_evaluations",
+          )
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
+          try:
+              with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                  before = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+                  results = []
+                  for relation in relations:
+                      database_bytes = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+                      relation_bytes = int(connection.execute(
+                          text("SELECT pg_total_relation_size(CAST(:relation AS regclass))"),
+                          {"relation": relation},
+                      ).scalar_one())
+                      peak = relation_rewrite_peak_estimate(database_bytes, relation_bytes)
+                      if peak >= PROVIDER_LIMIT_BYTES:
+                          results.append({
+                              "relation": relation,
+                              "status": "skipped_provider_headroom",
+                              "database_bytes": database_bytes,
+                              "relation_bytes": relation_bytes,
+                              "estimated_peak_bytes": peak,
+                          })
+                          continue
+                      connection.execute(text(f"VACUUM (FULL, ANALYZE) {relation}"))
+                      after_relation = int(connection.execute(
+                          text("SELECT pg_total_relation_size(CAST(:relation AS regclass))"),
+                          {"relation": relation},
+                      ).scalar_one())
+                      after_db = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+                      results.append({
+                          "relation": relation,
+                          "status": "reclaimed",
+                          "before_relation_bytes": relation_bytes,
+                          "after_relation_bytes": after_relation,
+                          "database_bytes": after_db,
+                      })
+                  after = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+                  print(json.dumps({
+                      "database_bytes_before": before,
+                      "database_bytes_after": after,
+                      "database_reclaimed_bytes": max(0, before-after),
+                      "relations": results,
+                  }, sort_keys=True))
+          finally:
+              engine.dispose()
+          PY
+
+  ops-controlled-catchup:
+    name: ops-controlled-catchup
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'ops/run-worker-validation-now'
+    needs: [ops-capacity-maintenance]
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+      SUPABASE_STORAGE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
+      STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+      OPPORTUNITYOS_ENVIRONMENT: cloud
+      OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Freeze due-source manifest
+        run: python scripts/fr007_due_source_catchup.py --freeze --state-file /tmp/catchup-state.json
+      - name: Establish maintenance checkpoint at the proactive 380 MiB boundary
+        run: python scripts/fr007_due_source_catchup.py --cohort-index 0 --state-file /tmp/catchup-state.json
+      - name: Run first controlled 50-source cohort after successful maintenance
+        run: >-
+          python scripts/fr007_due_source_catchup.py
+          --cohort-index 0
+          --maintenance-run-id "${GITHUB_RUN_ID}"
+          --state-file /tmp/catchup-state.json
+      - name: Print sanitized checkpoint
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("/tmp/catchup-state.json")
+          if p.exists():
+              s=json.loads(p.read_text())
+              print(json.dumps({
+                  "status": s.get("status"),
+                  "manifest_count": s.get("manifest",{}).get("count"),
+                  "result_count": len(s.get("results",{})),
+                  "cohort_count": len(s.get("cohorts",[])),
+                  "maintenance_reason": s.get("maintenance_reason"),
+                  "database_bytes": (s.get("last_snapshot") or {}).get("database_bytes"),
+              }, sort_keys=True))
+          PY
