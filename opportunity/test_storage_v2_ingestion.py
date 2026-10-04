@@ -17,6 +17,7 @@ from storage.engine import get_engine, get_session_factory, init_db
 from storage.feed_projection import FeedProjectionRecord
 from storage.models import (
     FieldProvenanceRecord,
+    FounderCVSelectionRecord,
     FounderFeedbackRecord,
     MatchEvaluationRecord,
     OpportunityColdArchiveRecord,
@@ -165,6 +166,29 @@ class StorageV2DirectTierTests(unittest.TestCase):
         self.assertTrue(payload["provenance"])
         self.assertEqual(payload["normalized_opportunity"]["geographic_eligibility"]["status"], "excluded")
         self.assertEqual(payload["normalized_opportunity"]["responsibilities"], list(opportunity.responsibilities))
+
+    def test_generated_cv_selection_does_not_create_founder_protection(self):
+        opportunity, _ = self._ingest_cold()
+        self.session.add(
+            FounderCVSelectionRecord(
+                opportunity_id=opportunity.id,
+                variant="master",
+                object_path="founder-cv-portfolio/master.pdf",
+                sha256="a" * 64,
+                selected_at=datetime.now(timezone.utc),
+                truth_pack_hash="truth-a",
+            )
+        )
+        self.session.commit()
+
+        repository = StorageRepository(
+            self.session, cold_storage_client=self.private_storage
+        )
+        self.assertNotIn(
+            opportunity.id,
+            repository.get_founder_protected_ids([opportunity.id]),
+        )
+        self.assertFalse(repository.is_founder_protected(opportunity.id))
 
     def test_archived_placeholder_is_rejected_before_scoring_or_any_persistence(self):
         opportunity = _cold_opportunity(" [ARCHIVED] ")
