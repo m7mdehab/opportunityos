@@ -82,6 +82,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("TIME_BUDGET=7200", workflow)
         self.assertIn("--refill-due", workflow)
         self.assertIn("--due-before", workflow)
+        self.assertIn("--max-active-polls 5", workflow)
         self.assertIn("verify-scheduled-sweep:", workflow)
         self.assertIn("remaining_due", workflow)
 
