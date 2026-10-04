@@ -13,7 +13,7 @@ on:
         required: false
         default: "30"
       time_budget_seconds:
-        description: "Time budget in seconds per shard (manual cap 2700; scheduled runs use 2700)"
+        description: "Time budget in seconds per shard (manual cap 2700)"
         required: false
         default: "480"
   workflow_call:
@@ -33,9 +33,6 @@ on:
         required: false
         type: string
         default: "480"
-  schedule:
-    # Founder-only cadence: twice daily to keep discovery fresh while bounding Supabase usage.
-    - cron: "17 */12 * * *"
 permissions:
   contents: read
 
@@ -51,7 +48,7 @@ jobs:
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain' || inputs.mode == '')) ||
           (github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain')) ||
-          github.event_name == 'schedule' }}
+          false }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -108,7 +105,7 @@ jobs:
           ((github.event_name == 'workflow_dispatch' && inputs.mode == 'drain') ||
            (github.event_name == 'workflow_call' && inputs.mode == 'drain') ||
            ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode == 'all' || inputs.mode == '') && needs.enqueue.result == 'success') ||
-           (github.event_name == 'schedule' && needs.enqueue.result == 'success')) }}
+           false) }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(needs.enqueue.outputs.max_parallel) }}
@@ -116,9 +113,8 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     environment: fr007-staging
     runs-on: ubuntu-latest
-    # Twice-daily runs may need to clear the full due-source set. Keep enough
-    # runner headroom for a 45-minute scheduled drain budget plus a historically
-    # valid 2,250s (37.5m) long-tail source handler near the end of that budget.
+    # Manual/reusable normal drains remain bounded recovery tools. Production
+    # source discovery is owned exclusively by the checkpointed catch-up workflow.
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -138,8 +134,8 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          RAW_MAX="${{ github.event_name == 'schedule' && '150' || inputs.max_jobs || '30' }}"
-          RAW_BUDGET="${{ github.event_name == 'schedule' && '2700' || inputs.time_budget_seconds || '480' }}"
+          RAW_MAX="${{ inputs.max_jobs || '30' }}"
+          RAW_BUDGET="${{ inputs.time_budget_seconds || '480' }}"
           MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
           TIME_BUDGET=$(( RAW_BUDGET > 2700 ? 2700 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
           python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}" --worker-id "${OPOS_WORKER_ID}"
