@@ -28,7 +28,6 @@ from storage.models import (
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
     MatchEvaluationRecord,
-    FounderCVSelectionRecord,
 )
 from storage.cold_storage import (
     delete as delete_cold_object,
