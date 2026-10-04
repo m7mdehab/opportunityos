@@ -2,13 +2,6 @@ name: FR-007 orphan dead-letter recovery
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/fr007-orphan-deadletter-recovery.yml
-      - scripts/fr007_recover_orphan_deadletters.py
-
 permissions:
   contents: read
 
