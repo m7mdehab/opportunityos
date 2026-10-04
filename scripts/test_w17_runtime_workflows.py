@@ -113,6 +113,34 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         # Drain runs on all / drain, skipped on enqueue
         self.assertIn("inputs.mode == 'drain'", drain_section)
 
+    def test_live_runtime_mutations_cannot_reappear_on_push(self):
+        runtime_takeover = (ROOT / ".github" / "workflows" / "fr007-runtime-takeover-proof.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", runtime_takeover)
+        self.assertGreaterEqual(
+            runtime_takeover.count("github.event_name == 'workflow_dispatch'"),
+            4,
+        )
+        self.assertIn(
+            "always() && github.event_name == 'workflow_dispatch'",
+            runtime_takeover,
+        )
+
+        for name in (
+            "fr007-hot-evaluation-capacity-reclaim.yml",
+            "fr007-orphan-deadletter-recovery.yml",
+        ):
+            workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+            self.assertIn("workflow_dispatch:", workflow)
+            self.assertNotIn("\n  push:", workflow)
+
+    def test_main_deploy_does_not_refresh_live_candidates_on_unrelated_pushes(self):
+        workflow = (ROOT / ".github" / "workflows" / "fr008-w75-live-deploy.yml").read_text(encoding="utf-8")
+        self.assertNotIn("Read-only bounded candidate dry run", workflow)
+        self.assertNotIn("Refresh bounded actionable candidates", workflow)
+        self.assertNotIn("--discover-current-candidates --candidate-limit 50", workflow)
+        self.assertIn("Read-only current For You reconciliation dry run", workflow)
+        self.assertIn("Refresh only the reviewed BC candidate set", workflow)
+
     def test_clean_rebuild_bootstrap_requires_explicit_bounded_source_selection(self):
         bootstrap = (ROOT / "scripts" / "fr007_hosted_bootstrap.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "fr007-hosted-bootstrap.yml").read_text(encoding="utf-8")
