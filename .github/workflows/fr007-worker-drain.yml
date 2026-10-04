@@ -120,7 +120,8 @@ jobs:
           # fr007-hosted-bootstrap; routine cron never creates registry-wide work.
           python scripts/fr007_hosted_bootstrap.py \
             --mode enqueue \
-            --due-before "${{ steps.sweep.outputs.due_before }}"
+            --due-before "${{ steps.sweep.outputs.due_before }}" \
+            --max-active-polls 5
 
   drain:
     needs: [enqueue]
@@ -166,7 +167,7 @@ jobs:
             # repository capacity guard stops new source work.
             MAX_JOBS=500
             TIME_BUDGET=7200
-            EXTRA_ARGS=(--refill-due --due-before "${{ needs.enqueue.outputs.sweep_due_before }}")
+            EXTRA_ARGS=(--refill-due --due-before "${{ needs.enqueue.outputs.sweep_due_before }}" --max-active-polls 5)
           else
             # Manual/push recovery keeps the historical small bounded slice.
             RAW_MAX="${{ inputs.max_jobs || '30' }}"
