@@ -21,6 +21,10 @@ from scripts.fr007_due_source_catchup import (
     WORKER_PROCESS_TIMEOUT_SECONDS,
     WORKER_TIME_BUDGET_SECONDS,
     WAVE_TIMEOUT_SECONDS,
+    MAX_WORKER_PROCESS_TIMEOUT_SECONDS,
+    MIN_WORKER_PROCESS_TIMEOUT_SECONDS,
+    adaptive_worker_timeout_seconds,
+    safe_wave_size,
     assert_founder_state_unchanged,
     cohort_for_index,
     freeze_manifest_entries,
@@ -193,6 +197,27 @@ class DueSourceSafetyTests(unittest.TestCase):
         self.assertGreaterEqual(
             POLL_WAVE_TIMEOUT_SECONDS,
             MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS,
+        )
+
+    def test_adaptive_timeout_covers_live_long_tail_but_stays_bounded(self):
+        self.assertEqual(adaptive_worker_timeout_seconds([]), MIN_WORKER_PROCESS_TIMEOUT_SECONDS)
+        # Production has demonstrated successful polls around 5,372 seconds.
+        live_long_tail = adaptive_worker_timeout_seconds([5372.2])
+        self.assertGreater(live_long_tail, 5372.2)
+        self.assertLessEqual(live_long_tail, MAX_WORKER_PROCESS_TIMEOUT_SECONDS)
+        self.assertEqual(
+            adaptive_worker_timeout_seconds([100_000]),
+            MAX_WORKER_PROCESS_TIMEOUT_SECONDS,
+        )
+
+    def test_capacity_forecast_reduces_wave_size_before_390_mib(self):
+        state = {"cohorts": [], "last_wave": None}
+        # Enough room for one conservative source, not five.
+        current = OVERNIGHT_CATCHUP_CEILING_BYTES - 200_000
+        self.assertEqual(safe_wave_size(state, current, 5), 1)
+        self.assertEqual(
+            safe_wave_size(state, OVERNIGHT_CATCHUP_CEILING_BYTES - 100_000, 5),
+            0,
         )
 
     def test_cooling_or_read_disabled_source_fails_closed(self):
@@ -566,12 +591,22 @@ class MigrationHeadTests(unittest.TestCase):
 
     def test_runtime_workflow_is_main_only_and_serialized_with_worker_drain(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/fr007-due-source-overnight-catchup.yml").read_text(encoding="utf-8")
+        maintenance = (Path(__file__).resolve().parents[1] / ".github/workflows/fr007-hot-evaluation-capacity-reclaim.yml").read_text(encoding="utf-8")
         self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
         self.assertIn("group: fr007-worker-drain", workflow)
         self.assertIn("maintenance_run_id:", workflow)
         self.assertIn("--maintenance-run-id", workflow)
         self.assertIn("--cohort-index", workflow)
+        self.assertIn("--step", workflow)
+        self.assertIn('cron: "17 */12 * * *"', workflow)
+        self.assertIn("actions: write", workflow)
+        self.assertIn("previous_run_id", workflow)
+        self.assertIn("STEP_COMPLETE", workflow)
+        self.assertIn("MAINTENANCE_REQUIRED", workflow)
+        self.assertIn("CAPACITY_BLOCKED", workflow)
         self.assertIn("retention-days: 30", workflow)
+        self.assertIn("resume_catchup_run_id:", maintenance)
+        self.assertIn("Resume the exact frozen catch-up checkpoint", maintenance)
 
 
 if __name__ == "__main__":
