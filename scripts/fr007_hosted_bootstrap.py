@@ -47,6 +47,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--time-budget-seconds", type=float, default=300.0)
     p.add_argument("--worker-id", type=str, default=None, help="Explicit worker identity")
     p.add_argument(
+        "--due-before",
+        type=str,
+        default=None,
+        help="Freeze due eligibility at this ISO-8601 UTC instant for one scheduled sweep",
+    )
+    p.add_argument(
+        "--refill-due",
+        action="store_true",
+        help="When a drain shard becomes idle, enqueue more sources that were already due at --due-before",
+    )
+    p.add_argument(
         "--poll-source-only",
         action="store_true",
         help="Drain only poll_source jobs; used by disjoint bounded source-bootstrap shards",
@@ -135,6 +146,8 @@ def _drain(
     budget: float,
     worker_id: str | None = None,
     poll_source_only: bool = False,
+    refill_due: bool = False,
+    refill_due_before: datetime | None = None,
 ) -> int:
     effective_worker_id = worker_id or os.environ.get("OPOS_WORKER_ID") or "hosted-bootstrap"
 
@@ -155,10 +168,33 @@ def _drain(
     runner = WorkerRunner(session_factory, handlers, **runner_kwargs)
     started = time.monotonic()
     processed = 0
+    registry = SourceRegistry() if refill_due else None
     while processed < max_jobs and time.monotonic() - started < budget:
-        if not runner.run_once():
+        if runner.run_once():
+            processed += 1
+            continue
+        if not refill_due:
             break  # queue-empty is a successful bounded stop condition
-        processed += 1
+
+        refill_session = session_factory()
+        try:
+            items, _ = enqueue_due_sources(
+                refill_session,
+                registry=registry,
+                create_missing_schedules=False,
+                due_before=refill_due_before,
+            )
+            refill_session.commit()
+        except Exception:
+            refill_session.rollback()
+            raise
+        finally:
+            refill_session.close()
+
+        if not items:
+            break
+        # New bounded work was committed. Loop immediately so this shard (or a
+        # sibling shard) can claim it without sleeping for another cron tick.
     return processed
 
 
@@ -166,6 +202,20 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.poll_source_only and args.mode != "drain":
         raise SystemExit("--poll-source-only is permitted only with --mode drain")
+    if args.refill_due and args.mode != "drain":
+        raise SystemExit("--refill-due is permitted only with --mode drain")
+    if args.refill_due and not args.due_before:
+        raise SystemExit("--refill-due requires --due-before")
+    due_before = None
+    if args.due_before:
+        try:
+            due_before = datetime.fromisoformat(args.due_before.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise SystemExit("--due-before must be a valid ISO-8601 timestamp") from exc
+        if due_before.tzinfo is None:
+            due_before = due_before.replace(tzinfo=timezone.utc)
+        else:
+            due_before = due_before.astimezone(timezone.utc)
     selected_source_ids = None
     if args.source_ids is not None:
         selected_source_ids = [part.strip() for part in args.source_ids.split(",") if part.strip()]
@@ -268,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
                         # Routine cron/manual enqueue only advances schedules
                         # created by explicit, bounded source-bootstrap batches.
                         enqueue_kwargs["create_missing_schedules"] = False
+                    if due_before is not None:
+                        enqueue_kwargs["due_before"] = due_before
                     items, _ = enqueue_due_sources(session, **enqueue_kwargs)
                     if args.source_id is not None and (
                         len(items) != 1 or items[0].get("source_id") != args.source_id
@@ -297,6 +349,9 @@ def main(argv: list[str] | None = None) -> int:
             }
             if args.poll_source_only:
                 drain_kwargs["poll_source_only"] = True
+            if args.refill_due:
+                drain_kwargs["refill_due"] = True
+                drain_kwargs["refill_due_before"] = due_before
             processed = _drain(factory, **drain_kwargs)
 
         print(
