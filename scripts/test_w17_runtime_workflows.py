@@ -71,7 +71,10 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
 
     def test_worker_drain_schedule_and_defaults(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "17 */12 * * *"', workflow)
+        self.assertEqual(workflow.count('cron: "17 */12 * * *"'), 1)
+        self.assertNotIn("Temporary one-shot validation slot", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertNotIn("github.event_name == 'push'", workflow)
         # Manual defaults stay conservative; scheduled runs get enough capacity
         # to clear the twice-daily due-source set without increasing source cadence.
         self.assertIn('default: "30"', workflow)
