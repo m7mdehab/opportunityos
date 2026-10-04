@@ -38,21 +38,6 @@ HOT_DIMENSION_ALLOWED_KEYS = (
     "signal_tags",
 )
 
-HOT_DIMENSION_UNSUPPORTED_ITEM_SQL = """
-    CASE
-      WHEN jsonb_typeof(item) <> 'object' THEN true
-      ELSE EXISTS (
-        SELECT 1
-        FROM jsonb_object_keys(item) AS key(name)
-        WHERE key.name NOT IN (
-          'dimension_name', 'raw_score', 'weight',
-          'weighted_score', 'explanation', 'signal_tags'
-        )
-      )
-    END
-"""
-
-
 
 
 def relation_rewrite_peak_estimate(database_bytes: int, relation_bytes: int) -> int:
