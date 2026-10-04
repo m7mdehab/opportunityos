@@ -255,8 +255,14 @@ jobs:
         run: python -m pip install -e .
       - name: Freeze due-source manifest
         run: python scripts/fr007_due_source_catchup.py --freeze --state-file /tmp/catchup-state.json
-      - name: Run first controlled 50-source cohort
+      - name: Establish maintenance checkpoint at the proactive 380 MiB boundary
         run: python scripts/fr007_due_source_catchup.py --cohort-index 0 --state-file /tmp/catchup-state.json
+      - name: Run first controlled 50-source cohort after successful maintenance
+        run: >-
+          python scripts/fr007_due_source_catchup.py
+          --cohort-index 0
+          --maintenance-run-id "${GITHUB_RUN_ID}"
+          --state-file /tmp/catchup-state.json
       - name: Print sanitized checkpoint
         if: always()
         run: |
