@@ -2,9 +2,10 @@ name: FR-007 Cloud Observability & Release Gates
 
 on:
   schedule:
-    # Founder-only cadence: twice daily, staggered 30 minutes after the worker drain.
-    # This preserves useful health coverage while materially reducing Supabase traffic.
-    - cron: "47 */12 * * *"
+    # Founder-only cadence: twice daily, 4h30 after each worker start.
+    # The worker has a bounded 4h job envelope; monitoring must observe the
+    # settled post-run state rather than compete with source/evaluation work.
+    - cron: "47 4,16 * * *"
   push:
     branches:
       - main
