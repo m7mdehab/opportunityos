@@ -145,3 +145,18 @@ jobs:
           storage.test_feed_projection_service
       - name: Execute bounded BC production candidate canary
         run: python -m scripts.bc_candidate_canary --execute
+
+  ops-worker-validation:
+    name: ops-worker-validation
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.ref == 'ops/run-worker-validation-now' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    needs: [governance]
+    uses: ./.github/workflows/fr007-worker-drain.yml
+    with:
+      mode: all
+      max_jobs: "150"
+      time_budget_seconds: "2700"
+    secrets: inherit
+
