@@ -23,7 +23,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, get_production_db_url
-from storage.models import WorkerJobRecord
+from storage.models import SourceScheduleRecord, WorkerJobRecord
 from worker.handlers import default_handler_registry
 from worker.scheduler import enqueue_due_sources, get_or_create_source_schedule, _parse_cadence_hours
 from worker.runner import WorkerRunner
@@ -178,23 +178,57 @@ def _drain(
 
         refill_session = session_factory()
         try:
-            items, _ = enqueue_due_sources(
+            items, skipped = enqueue_due_sources(
                 refill_session,
                 registry=registry,
                 create_missing_schedules=False,
                 due_before=refill_due_before,
             )
             refill_session.commit()
+            active_jobs = (
+                refill_session.query(WorkerJobRecord)
+                .filter(WorkerJobRecord.status.in_(("PENDING", "RETRY", "RUNNING")))
+                .count()
+            )
+            cutoff_naive = (
+                refill_due_before.astimezone(timezone.utc).replace(tzinfo=None)
+                if refill_due_before is not None
+                else datetime.now(timezone.utc).replace(tzinfo=None)
+            )
+            now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+            remaining_due = (
+                refill_session.query(SourceScheduleRecord)
+                .filter(
+                    SourceScheduleRecord.next_due_at <= cutoff_naive,
+                    (
+                        SourceScheduleRecord.cooldown_until.is_(None)
+                        | (SourceScheduleRecord.cooldown_until <= now_naive)
+                    ),
+                )
+                .count()
+            )
         except Exception:
             refill_session.rollback()
             raise
         finally:
             refill_session.close()
 
-        if not items:
+        if items:
+            # New bounded work was committed. Loop immediately so this shard
+            # (or a sibling shard) can claim it without another cron tick.
+            continue
+
+        reasons = {item.get("reason") for item in skipped}
+        if "warning_capacity_ceiling" in reasons or "capacity_pause" in reasons:
             break
-        # New bounded work was committed. Loop immediately so this shard (or a
-        # sibling shard) can claim it without sleeping for another cron tick.
+        if not active_jobs and not remaining_due:
+            break
+
+        # Another shard owns or has just enqueued the bounded wave. Stay alive
+        # so five-way throughput does not collapse to one worker at refill
+        # boundaries. This is a short local wait, not another database poll.
+        time.sleep(0.5)
+    return processed
     return processed
 
 
