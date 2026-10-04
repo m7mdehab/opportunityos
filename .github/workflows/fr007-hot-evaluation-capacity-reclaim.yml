@@ -121,35 +121,17 @@ jobs:
           import os
           from sqlalchemy import create_engine, text
           from scripts.db_capacity_guard import BLOCK_BYTES
-          allowed = {
-              "dimension_name", "raw_score", "weight", "weighted_score",
-              "explanation", "signal_tags",
-          }
+          from scripts.db_capacity_maintenance import hot_dimension_validation_summary
           engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
           try:
               with engine.connect() as connection:
                   size = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
-                  rows = connection.execute(text("""
-                      SELECT e.dimension_scores_json
-                      FROM match_evaluations e
-                      JOIN opportunities o ON o.id=e.opportunity_id
-                      WHERE o.lifecycle_tier IN ('hot','protected')
-                        AND e.dimension_scores_json IS NOT NULL
-                  """)).scalars().all()
-              import json
-              invalid = 0
-              for raw in rows:
-                  try:
-                      dimensions = json.loads(raw)
-                  except Exception:
-                      invalid += 1
-                      continue
-                  if not isinstance(dimensions, list):
-                      invalid += 1
-                      continue
-                  if any(not isinstance(item, dict) or (set(item) - allowed) for item in dimensions):
-                      invalid += 1
-              print(f"capacity_after_bytes={size} heavy_work_pause_bytes={BLOCK_BYTES} invalid_dimension_rows={invalid}")
+                  validation = hot_dimension_validation_summary(connection)
+              invalid = validation["invalid_rows"]
+              print(
+                  f"capacity_after_bytes={size} heavy_work_pause_bytes={BLOCK_BYTES} "
+                  f"checked_dimension_rows={validation['checked_rows']} invalid_dimension_rows={invalid}"
+              )
               if size >= BLOCK_BYTES:
                   raise SystemExit("capacity remains at/above the 400 MiB heavy-work pause boundary")
               if invalid:
@@ -239,11 +221,7 @@ jobs:
           from datetime import datetime
           from sqlalchemy import create_engine, text
           from scripts.db_capacity_guard import BLOCK_BYTES, HARD_STOP_BYTES, PROVIDER_LIMIT_BYTES
-
-          allowed = {
-              "dimension_name", "raw_score", "weight", "weighted_score",
-              "explanation", "signal_tags",
-          }
+          from scripts.db_capacity_maintenance import hot_dimension_validation_summary
           engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -267,13 +245,7 @@ jobs:
                   """), {"capacity_baseline_at": datetime.fromisoformat(
                       os.environ["CAPACITY_BASELINE_AT"]
                   )}).scalar_one())
-                  dimensions = connection.execute(text("""
-                      SELECT e.dimension_scores_json
-                      FROM match_evaluations e
-                      JOIN opportunities o ON o.id=e.opportunity_id
-                      WHERE o.lifecycle_tier IN ('hot','protected')
-                        AND e.dimension_scores_json IS NOT NULL
-                  """)).scalars().all()
+                  dimension_validation = hot_dimension_validation_summary(connection)
                   lifecycle = connection.execute(text("""
                       SELECT lifecycle_tier, count(*)::bigint AS count
                       FROM opportunities GROUP BY lifecycle_tier ORDER BY lifecycle_tier
@@ -286,18 +258,7 @@ jobs:
                   dead_letter_count = int(connection.execute(text(
                       "SELECT count(*) FROM worker_jobs WHERE status='DEAD_LETTER'"
                   )).scalar_one())
-              invalid = 0
-              for raw in dimensions:
-                  try:
-                      items = json.loads(raw)
-                  except Exception:
-                      invalid += 1
-                      continue
-                  if not isinstance(items, list) or any(
-                      not isinstance(item, dict) or (set(item) - allowed)
-                      for item in items
-                  ):
-                      invalid += 1
+              invalid = dimension_validation["invalid_rows"]
 
               snapshot = {
                   "database_bytes": size,
@@ -314,6 +275,7 @@ jobs:
                   "orphan_race_dead_letters": orphan_count,
                   "unrelated_dead_letters": dead_letter_count - orphan_count,
                   "new_capacity_ceiling_failures_this_run": failure_count,
+                  "checked_hot_protected_dimension_rows": dimension_validation["checked_rows"],
                   "unsupported_hot_protected_dimension_rows": invalid,
                   "operation": os.environ["OPERATION"],
               }

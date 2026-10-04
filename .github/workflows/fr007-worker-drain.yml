@@ -79,14 +79,16 @@ jobs:
           import json
           import os
           from sqlalchemy import create_engine
-          from scripts.db_capacity_guard import inspect_connection, WARN_BYTES
+          from scripts.db_capacity_guard import inspect_connection
+
+          CATCHUP_PARALLELISM_LIMIT_BYTES = 380 * 1024 * 1024
 
           engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_size=1, max_overflow=0, pool_pre_ping=True)
           try:
               with engine.connect() as connection:
                   snapshot = inspect_connection(connection)
               can_start = not snapshot.pauses_heavy_work
-              parallelism = 1 if snapshot.database_size_bytes >= WARN_BYTES else 5
+              parallelism = 1 if snapshot.database_size_bytes >= CATCHUP_PARALLELISM_LIMIT_BYTES else 5
               print(json.dumps({**snapshot.as_dict(), "can_start": can_start, "worker_parallelism": parallelism}, sort_keys=True))
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"can_start={'true' if can_start else 'false'}\n")
@@ -122,9 +124,10 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     environment: fr007-staging
     runs-on: ubuntu-latest
-    # A source poll has previously succeeded in 2,250s (37.5m). Keep enough
-    # runner headroom for that valid handler duration plus process teardown.
-    timeout-minutes: 50
+    # Twice-daily runs may need to clear the full due-source set. Keep enough
+    # runner headroom for a 45-minute scheduled drain budget plus a historically
+    # valid 2,250s (37.5m) long-tail source handler near the end of that budget.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -143,10 +146,10 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          RAW_MAX="${{ inputs.max_jobs || '30' }}"
-          RAW_BUDGET="${{ inputs.time_budget_seconds || '480' }}"
+          RAW_MAX="${{ github.event_name == 'schedule' && '150' || inputs.max_jobs || '30' }}"
+          RAW_BUDGET="${{ github.event_name == 'schedule' && '2700' || inputs.time_budget_seconds || '480' }}"
           MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
-          TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
+          TIME_BUDGET=$(( RAW_BUDGET > 2700 ? 2700 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
           python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}" --worker-id "${OPOS_WORKER_ID}"
 
 

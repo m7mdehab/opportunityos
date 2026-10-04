@@ -29,6 +29,16 @@ from scripts.db_capacity_guard import PROVIDER_LIMIT_BYTES
 
 PROVIDER_REWRITE_SAFETY_MARGIN_BYTES = 16 * 1024 * 1024
 
+HOT_DIMENSION_ALLOWED_KEYS = (
+    "dimension_name",
+    "raw_score",
+    "weight",
+    "weighted_score",
+    "explanation",
+    "signal_tags",
+)
+
+
 
 def relation_rewrite_peak_estimate(database_bytes: int, relation_bytes: int) -> int:
     """Estimate rewrite-time database use with a reserve for index/temp overhead."""
@@ -292,6 +302,49 @@ def hot_dimension_compaction_plan(connection) -> dict[str, Any]:
         **{key: int(value or 0) for key, value in dict(row).items()},
         "relation_bytes": relation_bytes,
         "database_bytes": database_bytes,
+    }
+
+
+def hot_dimension_validation_summary(connection) -> dict[str, int]:
+    """Validate the compact HOT/PROTECTED dimension envelope entirely in PostgreSQL.
+
+    Only aggregate counts leave the database. This preserves the previous
+    validation semantics without exporting every JSON payload to the runner.
+    """
+    row = connection.execute(text("""
+        WITH candidates AS (
+          SELECT e.dimension_scores_json AS raw
+          FROM match_evaluations e
+          JOIN opportunities o ON o.id = e.opportunity_id
+          WHERE o.lifecycle_tier IN ('hot', 'protected')
+            AND e.dimension_scores_json IS NOT NULL
+        )
+        SELECT
+          count(*)::bigint AS checked_rows,
+          count(*) FILTER (
+            WHERE CASE
+              WHEN NOT pg_input_is_valid(raw, 'jsonb') THEN true
+              WHEN jsonb_typeof(raw::jsonb) <> 'array' THEN true
+              ELSE EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(raw::jsonb) AS item(value)
+                WHERE jsonb_typeof(item.value) <> 'object'
+                   OR EXISTS (
+                     SELECT 1
+                     FROM jsonb_object_keys(item.value) AS key(name)
+                     WHERE key.name NOT IN (
+                       'dimension_name', 'raw_score', 'weight',
+                       'weighted_score', 'explanation', 'signal_tags'
+                     )
+                   )
+              )
+            END
+          )::bigint AS invalid_rows
+        FROM candidates
+    """)).mappings().one()
+    return {
+        "checked_rows": int(row["checked_rows"] or 0),
+        "invalid_rows": int(row["invalid_rows"] or 0),
     }
 
 

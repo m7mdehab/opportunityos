@@ -72,11 +72,15 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_worker_drain_schedule_and_defaults(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         self.assertIn('cron: "17 */12 * * *"', workflow)
-        # Scheduled/default per-shard parameters: 30 jobs, 480 seconds
+        # Manual defaults stay conservative; scheduled runs get enough capacity
+        # to clear the twice-daily due-source set without increasing source cadence.
         self.assertIn('default: "30"', workflow)
         self.assertIn('default: "480"', workflow)
+        self.assertIn("github.event_name == 'schedule' && '150'", workflow)
+        self.assertIn("github.event_name == 'schedule' && '2700'", workflow)
         self.assertIn("RAW_MAX > 150 ? 150", workflow)
-        self.assertIn("RAW_BUDGET > 540 ? 540", workflow)
+        self.assertIn("RAW_BUDGET > 2700 ? 2700", workflow)
+        self.assertIn("CATCHUP_PARALLELISM_LIMIT_BYTES = 380 * 1024 * 1024", workflow)
 
     def test_worker_drain_unique_worker_id_per_shard(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
@@ -86,7 +90,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_worker_drain_timeout_covers_historically_slow_source_poll(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         drain_section = workflow.split("drain:", 1)[1]
-        self.assertIn("timeout-minutes: 50", drain_section)
+        self.assertIn("timeout-minutes: 90", drain_section)
 
     def test_final_closure_fails_closed_on_piped_failures_and_direct_script_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
@@ -120,6 +124,8 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("implicit_source_schedule_creation_enabled", scheduler)
         self.assertIn("implicit_source_schedule_creation_enabled()", worker_main)
         self.assertIn("implicit_source_schedule_creation_enabled()", container_entrypoint)
+        self.assertIn("HOSTED_MIN_SOURCE_CADENCE_HOURS = 12.0", bootstrap)
+        self.assertIn("max(cadence.get(sid, 6.0), HOSTED_MIN_SOURCE_CADENCE_HOURS)", bootstrap)
 
     def test_hosted_bootstrap_worker_id_contract(self):
         import os
