@@ -235,8 +235,7 @@ jobs:
           PY
 
   summarize:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    if: always()
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: [deterministic, enqueue, drain, observe]
     environment: fr007-staging
     runs-on: ubuntu-latest
