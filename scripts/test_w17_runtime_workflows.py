@@ -124,6 +124,8 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("implicit_source_schedule_creation_enabled", scheduler)
         self.assertIn("implicit_source_schedule_creation_enabled()", worker_main)
         self.assertIn("implicit_source_schedule_creation_enabled()", container_entrypoint)
+        self.assertIn("HOSTED_MIN_SOURCE_CADENCE_HOURS = 12.0", bootstrap)
+        self.assertIn("max(cadence.get(sid, 6.0), HOSTED_MIN_SOURCE_CADENCE_HOURS)", bootstrap)
 
     def test_hosted_bootstrap_worker_id_contract(self):
         import os
