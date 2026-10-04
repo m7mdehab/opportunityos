@@ -36,16 +36,6 @@ on:
   schedule:
     # Founder-only cadence: twice daily to keep discovery fresh while bounding Supabase usage.
     - cron: "17 */12 * * *"
-    # Temporary one-shot validation slot; remove after today's run starts.
-    - cron: "26 17 * * *"
-  push:
-    branches:
-      - main
-      - work/fr007-overseer-integration
-      - work/fr007-codex-runtime-takeover
-    paths:
-      - .github/workflows/fr007-worker-drain.yml
-
 permissions:
   contents: read
 
@@ -61,7 +51,7 @@ jobs:
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain' || inputs.mode == '')) ||
           (github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain')) ||
-          github.event_name == 'schedule' || github.event_name == 'push' }}
+          github.event_name == 'schedule' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -118,7 +108,7 @@ jobs:
           ((github.event_name == 'workflow_dispatch' && inputs.mode == 'drain') ||
            (github.event_name == 'workflow_call' && inputs.mode == 'drain') ||
            ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode == 'all' || inputs.mode == '') && needs.enqueue.result == 'success') ||
-           ((github.event_name == 'schedule' || github.event_name == 'push') && needs.enqueue.result == 'success')) }}
+           (github.event_name == 'schedule' && needs.enqueue.result == 'success')) }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(needs.enqueue.outputs.max_parallel) }}
