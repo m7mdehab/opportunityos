@@ -56,6 +56,7 @@ jobs:
     outputs:
       can_start: ${{ steps.capacity.outputs.can_start }}
       max_parallel: ${{ steps.capacity.outputs.max_parallel }}
+      sweep_due_before: ${{ steps.sweep.outputs.due_before }}
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain' || inputs.mode == '')) ||
           (github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain')) ||
@@ -70,6 +71,10 @@ jobs:
           python-version: "3.11"
       - name: Install repository dependencies
         run: python -m pip install -e .
+      - name: Freeze this execution's due-source cutoff
+        id: sweep
+        shell: bash
+        run: echo "due_before=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Classify capacity before scheduling or draining
         id: capacity
         env:
@@ -80,13 +85,22 @@ jobs:
           import os
           from sqlalchemy import create_engine
           from scripts.db_capacity_guard import inspect_connection, WARN_BYTES
+          from worker.scheduler import OVERNIGHT_CATCHUP_CEILING_BYTES
 
           engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_size=1, max_overflow=0, pool_pre_ping=True)
           try:
               with engine.connect() as connection:
                   snapshot = inspect_connection(connection)
               can_start = not snapshot.pauses_heavy_work
-              parallelism = 1 if snapshot.database_size_bytes >= WARN_BYTES else 5
+              if snapshot.database_size_bytes < WARN_BYTES:
+                  parallelism = 5
+              elif (
+                  os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+                  and snapshot.database_size_bytes < OVERNIGHT_CATCHUP_CEILING_BYTES
+              ):
+                  parallelism = 5
+              else:
+                  parallelism = 1
               print(json.dumps({**snapshot.as_dict(), "can_start": can_start, "worker_parallelism": parallelism}, sort_keys=True))
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"can_start={'true' if can_start else 'false'}\n")
@@ -104,7 +118,9 @@ jobs:
           set -euo pipefail
           # Source schedules are seeded only in explicit bounded batches via
           # fr007-hosted-bootstrap; routine cron never creates registry-wide work.
-          python scripts/fr007_hosted_bootstrap.py --mode enqueue
+          python scripts/fr007_hosted_bootstrap.py \
+            --mode enqueue \
+            --due-before "${{ steps.sweep.outputs.due_before }}"
 
   drain:
     needs: [enqueue]
@@ -122,9 +138,10 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     environment: fr007-staging
     runs-on: ubuntu-latest
-    # A source poll has previously succeeded in 2,250s (37.5m). Keep enough
-    # runner headroom for that valid handler duration plus process teardown.
-    timeout-minutes: 50
+    # Scheduled sweeps get a 2h claim budget. A valid public-board poll has
+    # taken ~90m historically, so leave enough post-budget headroom for a
+    # handler claimed near the end of the sweep to finish without replay.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -143,11 +160,83 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          RAW_MAX="${{ inputs.max_jobs || '30' }}"
-          RAW_BUDGET="${{ inputs.time_budget_seconds || '480' }}"
-          MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
-          TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
-          python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}" --worker-id "${OPOS_WORKER_ID}"
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            # Twice-daily founder sweep: keep five workers busy until every
+            # source that was due at sweep start has been attempted, or the
+            # repository capacity guard stops new source work.
+            MAX_JOBS=500
+            TIME_BUDGET=7200
+            EXTRA_ARGS=(--refill-due --due-before "${{ needs.enqueue.outputs.sweep_due_before }}")
+          else
+            # Manual/push recovery keeps the historical small bounded slice.
+            RAW_MAX="${{ inputs.max_jobs || '30' }}"
+            RAW_BUDGET="${{ inputs.time_budget_seconds || '480' }}"
+            MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
+            TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
+            EXTRA_ARGS=()
+          fi
+          python scripts/fr007_hosted_bootstrap.py \
+            --mode drain \
+            --max-jobs "${MAX_JOBS}" \
+            --time-budget-seconds "${TIME_BUDGET}" \
+            --worker-id "${OPOS_WORKER_ID}" \
+            "${EXTRA_ARGS[@]}"
+
+
+  verify-scheduled-sweep:
+    needs: [enqueue, drain]
+    if: ${{ always() && github.event_name == 'schedule' && needs.enqueue.outputs.can_start == 'true' }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Verify frozen 12-hour sweep convergence
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          SWEEP_DUE_BEFORE: ${{ needs.enqueue.outputs.sweep_due_before }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from sqlalchemy import create_engine, text
+          from worker.scheduler import OVERNIGHT_CATCHUP_CEILING_BYTES
+
+          cutoff = datetime.fromisoformat(os.environ["SWEEP_DUE_BEFORE"].replace("Z", "+00:00"))
+          cutoff = cutoff.replace(tzinfo=None)
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_size=1, max_overflow=0, pool_pre_ping=True)
+          try:
+              with engine.connect() as connection:
+                  row = connection.execute(text("""
+                      SELECT
+                        pg_database_size(current_database())::bigint AS database_bytes,
+                        (SELECT count(*)::bigint FROM worker_jobs
+                         WHERE status IN ('PENDING','RETRY','RUNNING')) AS runnable_jobs,
+                        (SELECT count(*)::bigint FROM source_schedules
+                         WHERE next_due_at <= :cutoff
+                           AND (cooldown_until IS NULL OR cooldown_until <= now())) AS remaining_due
+                  """), {"cutoff": cutoff}).mappings().one()
+              snapshot = {key: int(value) for key, value in dict(row).items()}
+              snapshot["warning_catchup_ceiling_bytes"] = OVERNIGHT_CATCHUP_CEILING_BYTES
+              print(json.dumps(snapshot, sort_keys=True))
+              if snapshot["runnable_jobs"]:
+                  raise SystemExit("scheduled sweep ended with runnable worker jobs")
+              if snapshot["remaining_due"]:
+                  if snapshot["database_bytes"] >= OVERNIGHT_CATCHUP_CEILING_BYTES:
+                      raise SystemExit(
+                          "scheduled sweep stopped at the protected database capacity ceiling; "
+                          "capacity maintenance is required before source work can safely resume"
+                      )
+                  raise SystemExit("scheduled sweep did not reconcile all sources due at sweep start")
+          finally:
+              engine.dispose()
+          PY
 
 
 
