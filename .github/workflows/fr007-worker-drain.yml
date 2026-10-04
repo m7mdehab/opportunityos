@@ -157,5 +157,6 @@ jobs:
 
 
 # A reviewed change to this workflow intentionally triggers one bounded normal recovery drain on main.
+# Runtime validation trigger: 2026-10-04 12-hour catch-up proof.
 
 
