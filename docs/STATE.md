@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `b07cfda` — test: lock scheduled five-poll concurrency cap
+- **State generated at commit:** `e06f230` — test: prevent hot JSON egress regression
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
