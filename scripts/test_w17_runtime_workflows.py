@@ -128,6 +128,9 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         for name in (
             "fr007-hot-evaluation-capacity-reclaim.yml",
             "fr007-orphan-deadletter-recovery.yml",
+            "fr007-hosted-bootstrap.yml",
+            "fr007-incremental-source-bootstrap.yml",
+            "fr007-due-source-overnight-catchup.yml",
         ):
             workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
             self.assertIn("workflow_dispatch:", workflow)
