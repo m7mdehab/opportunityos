@@ -34,25 +34,31 @@ MAX_COHORT_SOURCES = 50
 MAX_PARALLEL_SOURCE_WORKERS = 5
 MAX_RETAINED_WORKER_CONNECTIONS = 10
 WORKER_TIME_BUDGET_SECONDS = 480
-# The hosted runner's time budget is checked between jobs; an already-claimed
-# source handler is allowed to finish. Production history includes healthy
-# public-board polls lasting 2,250 seconds, so the orchestration timeout must
-# exceed that observed duration or it will kill valid work and replay it.
-MAX_OBSERVED_SUCCESSFUL_SOURCE_POLL_SECONDS = 2_250
+# Source runtimes are highly skewed in production. Never encode a historical
+# maximum as a permanent timeout: derive a per-wave bound from each source's
+# successful history, with a conservative floor/ceiling.
+MIN_WORKER_PROCESS_TIMEOUT_SECONDS = 45 * 60
+MAX_WORKER_PROCESS_TIMEOUT_SECONDS = 2 * 60 * 60
+SOURCE_TIMEOUT_MULTIPLIER = 1.25
 WORKER_IN_FLIGHT_GRACE_SECONDS = 450
-WORKER_PROCESS_TIMEOUT_SECONDS = max(
-    WORKER_TIME_BUDGET_SECONDS + 420,
-    MAX_OBSERVED_SUCCESSFUL_SOURCE_POLL_SECONDS + WORKER_IN_FLIGHT_GRACE_SECONDS,
-)
+SLOW_SOURCE_ISOLATION_SECONDS = 30 * 60
+WORKER_PROCESS_TIMEOUT_SECONDS = MIN_WORKER_PROCESS_TIMEOUT_SECONDS
 WAVE_TIMEOUT_SECONDS = 75 * 60
-# A poll wave must outlive the durable queue's complete bounded retry budget.
-# Otherwise the coordinator can exit while a valid source attempt still owns a
-# live lease, leaving its wave uncheckpointed and blocking the frozen manifest.
+# One chained catch-up run must always fit inside GitHub's six-hour job limit.
+# Durable queue retries remain authoritative, but orchestration refuses to
+# monopolize a runner indefinitely.
+MAX_POLL_WAVE_SECONDS = 5 * 60 * 60
 DEFAULT_SOURCE_MAX_RETRIES = int(WorkerJobRecord.max_retries.default.arg)
 MAX_SOURCE_JOB_ATTEMPTS = DEFAULT_SOURCE_MAX_RETRIES + 1
-POLL_WAVE_TIMEOUT_SECONDS = MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS + 600
+POLL_WAVE_TIMEOUT_SECONDS = min(
+    MAX_POLL_WAVE_SECONDS,
+    MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS + 600,
+)
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024
+MAX_MAINTENANCE_ATTEMPTS = 2
+MIN_USEFUL_MAINTENANCE_RECLAIM_BYTES = 512 * 1024
+MAX_ZERO_PROGRESS_STEPS = 3
 # The cohort estimate uses the larger of the last two completed cohort rates,
 # with a 50% uncertainty reserve. Each five-source wave is independently
 # checked before it starts, so isolated wave growth does not get extrapolated
@@ -323,10 +329,31 @@ def freeze_live_manifest(path: Path) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         entries = _registry_due_entries(session, registry, now)
         if not entries:
-            raise CatchupSafetyError("no read-allowed, non-cooling due sources to freeze")
+            capacity = inspect_connection(session.connection())
+            manifest = {
+                "version": STATE_VERSION,
+                "created_at": now.isoformat(),
+                "count": 0,
+                "sha256": manifest_sha256([]),
+                "entries": [],
+                "database_bytes_at_freeze": int(capacity.database_size_bytes),
+                "founder_state_at_freeze": {},
+                "queue_at_freeze": {},
+            }
+            result = {
+                "manifest": manifest,
+                "results": {},
+                "cohorts": [],
+                "waves": [],
+                "failures": [],
+                "status": "NO_DUE_SOURCES",
+            }
+            _write_json(path, result)
+            return result
         state = _runtime_snapshot(session, source_id=entries[0]["source_id"])
         _require_clean_queue(state)
-        _require_capacity(state)
+        if state["capacity_read_only"] or state["capacity_in_recovery"]:
+            raise CatchupSafetyError("database is read-only or in recovery")
         manifest = {
             "version": STATE_VERSION,
             "created_at": now.isoformat(),
@@ -337,7 +364,14 @@ def freeze_live_manifest(path: Path) -> dict[str, Any]:
             "founder_state_at_freeze": state["founder_state"],
             "queue_at_freeze": state["queue"],
         }
-        result = {"manifest": manifest, "results": {}, "cohorts": [], "failures": []}
+        result = {
+            "manifest": manifest,
+            "results": {},
+            "cohorts": [],
+            "waves": [],
+            "failures": [],
+            "status": "MANIFEST_FROZEN",
+        }
         _write_json(path, result)
         return result
     finally:
@@ -392,7 +426,68 @@ def _job_rows(session, job_ids: set[str]) -> dict[str, dict[str, Any]]:
     } for row in rows}
 
 
-def _spawn_workers(*, count: int, worker_id_prefix: str, poll_only: bool) -> list[dict[str, Any]]:
+def adaptive_worker_timeout_seconds(observed_seconds: Iterable[float]) -> int:
+    """Return a bounded timeout that follows demonstrated successful runtime."""
+    observed = max((max(0.0, float(value)) for value in observed_seconds), default=0.0)
+    predicted = int(observed * SOURCE_TIMEOUT_MULTIPLIER) + WORKER_IN_FLIGHT_GRACE_SECONDS
+    return min(
+        MAX_WORKER_PROCESS_TIMEOUT_SECONDS,
+        max(MIN_WORKER_PROCESS_TIMEOUT_SECONDS, predicted),
+    )
+
+
+def _successful_poll_durations_seconds(
+    session, source_id: str, *, limit: int = 8
+) -> list[float]:
+    rows = (
+        session.query(SourcePollRunRecord.started_at, SourcePollRunRecord.finished_at)
+        .filter(
+            SourcePollRunRecord.source_id == source_id,
+            SourcePollRunRecord.status == "ok",
+            SourcePollRunRecord.started_at.isnot(None),
+            SourcePollRunRecord.finished_at.isnot(None),
+        )
+        .order_by(SourcePollRunRecord.finished_at.desc())
+        .limit(limit)
+        .all()
+    )
+    durations = []
+    for started_at, finished_at in rows:
+        started = _utc(started_at)
+        finished = _utc(finished_at)
+        if started is not None and finished is not None and finished >= started:
+            durations.append((finished - started).total_seconds())
+    return durations
+
+
+def _adaptive_wave_timeout_seconds(session, source_ids: list[str]) -> int:
+    observed = []
+    for source_id in source_ids:
+        observed.extend(_successful_poll_durations_seconds(session, source_id))
+    return adaptive_worker_timeout_seconds(observed)
+
+
+def _is_historically_slow_source(session, source_id: str) -> bool:
+    return max(
+        _successful_poll_durations_seconds(session, source_id),
+        default=0.0,
+    ) >= SLOW_SOURCE_ISOLATION_SECONDS
+
+
+def safe_wave_size(
+    state: dict[str, Any], current_bytes: int, maximum: int = MAX_PARALLEL_SOURCE_WORKERS
+) -> int:
+    """Largest 1..5 wave whose conservative growth forecast stays below 390 MiB."""
+    for size in range(min(MAX_PARALLEL_SOURCE_WORKERS, maximum), 0, -1):
+        if _predict_source_batch_bytes(state, current_bytes, size) < OVERNIGHT_CATCHUP_CEILING_BYTES:
+            return size
+    return 0
+
+
+def _spawn_workers(
+    *, count: int, worker_id_prefix: str, poll_only: bool,
+    timeout_seconds: int = WORKER_PROCESS_TIMEOUT_SECONDS,
+) -> list[dict[str, Any]]:
     if not 1 <= count <= MAX_PARALLEL_SOURCE_WORKERS:
         raise CatchupSafetyError("worker count is outside the five-process connection envelope")
     command = [
@@ -412,7 +507,7 @@ def _spawn_workers(*, count: int, worker_id_prefix: str, poll_only: bool) -> lis
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 env=os.environ.copy(),
-                timeout=WORKER_PROCESS_TIMEOUT_SECONDS,
+                timeout=timeout_seconds,
             )
             return {"worker_id": worker_id, "return_code": int(completed.returncode)}
         except Exception as exc:
@@ -439,9 +534,17 @@ def _sleep_until_next_attempt(rows: list[dict[str, Any]], *, deadline: float) ->
 
 
 def _drain_poll_jobs(
-    job_ids: set[str], *, wave_tag: str, baseline_job_ids: set[str]
+    job_ids: set[str], *, wave_tag: str, baseline_job_ids: set[str],
+    worker_timeout_seconds: int = WORKER_PROCESS_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + POLL_WAVE_TIMEOUT_SECONDS
+    deadline_seconds = min(
+        MAX_POLL_WAVE_SECONDS,
+        max(
+            POLL_WAVE_TIMEOUT_SECONDS,
+            MAX_SOURCE_JOB_ATTEMPTS * worker_timeout_seconds + 600,
+        ),
+    )
+    deadline = time.monotonic() + deadline_seconds
     attempt_round = 0
     while time.monotonic() < deadline:
         engine, session = _connect()
@@ -487,6 +590,7 @@ def _drain_poll_jobs(
                 count=run_count,
                 worker_id_prefix=f"due-catchup-{wave_tag}-{attempt_round}",
                 poll_only=True,
+                timeout_seconds=worker_timeout_seconds,
             )
             unexpected_exit = [
                 result for result in results
@@ -770,6 +874,7 @@ def _schedule_and_run_wave(
     source_ids: list[str], *, wave_tag: str, manifest_ids: set[str],
     founder_state_baseline: dict[str, int],
     frozen_due_at: dict[str, datetime], manifest_created_at: datetime,
+    worker_timeout_seconds: int = WORKER_PROCESS_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     engine, session = _connect()
     try:
@@ -816,7 +921,10 @@ def _schedule_and_run_wave(
         engine.dispose()
 
     poll_drain = _drain_poll_jobs(
-        poll_job_ids, wave_tag=wave_tag, baseline_job_ids=baseline_job_ids
+        poll_job_ids,
+        wave_tag=wave_tag,
+        baseline_job_ids=baseline_job_ids,
+        worker_timeout_seconds=worker_timeout_seconds,
     )
     poll_job_rows = poll_drain["job_rows"]
 
@@ -870,6 +978,7 @@ def _schedule_and_run_wave(
             "source_ids": source_ids,
             "poll_job_ids": sorted(poll_job_ids),
             "poll_worker_rounds": poll_drain["worker_rounds"],
+            "worker_timeout_seconds": worker_timeout_seconds,
             "evaluation_job_ids": eval_result["job_ids"],
             "evaluation_worker_rounds": eval_result["worker_rounds"],
             "sources": classifications,
@@ -960,6 +1069,200 @@ def _predict_source_batch_bytes(state: dict[str, Any], current_bytes: int, sourc
         historical.append(max(0, int(last_wave.get("database_growth_bytes", 0))) / count)
     per_source = max([DEFAULT_MEASURED_BYTES_PER_SOURCE, *historical])
     return int(current_bytes + per_source * source_count * WAVE_PREDICTION_MULTIPLIER)
+
+
+def _mark_maintenance_required(
+    state: dict[str, Any], snapshot: dict[str, Any], reason: str
+) -> dict[str, Any]:
+    attempts = int(state.get("maintenance_attempts", 0))
+    last_checkpoint = state.get("maintenance_checkpoint") or {}
+    last_reclaim = int(last_checkpoint.get("reclaimed_bytes", 0))
+    if attempts >= MAX_MAINTENANCE_ATTEMPTS or (
+        attempts > 0 and last_reclaim < MIN_USEFUL_MAINTENANCE_RECLAIM_BYTES
+    ):
+        state["status"] = "CAPACITY_BLOCKED"
+        state["capacity_block_reason"] = (
+            "maintenance_attempt_budget_exhausted"
+            if attempts >= MAX_MAINTENANCE_ATTEMPTS
+            else "maintenance_reclaimed_too_little_for_safe_progress"
+        )
+    else:
+        state["status"] = "MAINTENANCE_REQUIRED"
+        state["maintenance_reason"] = reason
+        state["maintenance_requested_at_bytes"] = int(snapshot["database_bytes"])
+    state["last_snapshot"] = snapshot
+    return state
+
+
+def run_step(
+    state_path: Path, maintenance_run_id: str | None = None
+) -> dict[str, Any]:
+    """Advance one durable catch-up wave and checkpoint all observable progress."""
+    state = _read_state(state_path)
+    manifest = state["manifest"]
+    entries = manifest["entries"]
+    if not entries:
+        state["status"] = "NO_DUE_SOURCES"
+        _write_json(state_path, state)
+        return state
+
+    engine, session = _connect()
+    try:
+        _reconcile_checkpoint_results(session, state)
+    finally:
+        session.close()
+        engine.dispose()
+
+    frozen_at = datetime.fromisoformat(manifest["created_at"])
+    entry_by_id = {entry["source_id"]: entry for entry in entries}
+    pending_ids = pending_manifest_sources(entries, state["results"])
+    if not pending_ids:
+        state["status"] = "READY_TO_FINALIZE"
+        _write_json(state_path, state)
+        return state
+
+    engine, session = _connect()
+    try:
+        pre = _runtime_snapshot(session, source_id=pending_ids[0])
+        _require_clean_queue(pre)
+        if pre["capacity_read_only"] or pre["capacity_in_recovery"]:
+            raise CatchupSafetyError("database is read-only or in recovery")
+
+        if maintenance_run_id is not None:
+            _validate_maintenance_checkpoint(state, maintenance_run_id)
+            requested_at = int(state.get("maintenance_requested_at_bytes", pre["database_bytes"]))
+            reclaimed = max(0, requested_at - int(pre["database_bytes"]))
+            attempts = int(state.get("maintenance_attempts", 0)) + 1
+            state["maintenance_attempts"] = attempts
+            state["maintenance_checkpoint"] = {
+                "run_id": maintenance_run_id,
+                "database_bytes": int(pre["database_bytes"]),
+                "requested_at_bytes": requested_at,
+                "reclaimed_bytes": reclaimed,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+        if pre["database_bytes"] >= OVERNIGHT_CATCHUP_CEILING_BYTES:
+            _mark_maintenance_required(
+                state, pre, "measured_capacity_reaches_390_mib"
+            )
+            _write_json(state_path, state)
+            return state
+
+        if (
+            pre["database_bytes"] >= COHORT_START_BYTES
+            and not state.get("maintenance_checkpoint")
+        ):
+            _mark_maintenance_required(
+                state, pre, "measured_capacity_reaches_380_mib"
+            )
+            _write_json(state_path, state)
+            return state
+
+        progress_before = len(state["results"])
+        candidates: list[str] = []
+        for source_id in pending_ids:
+            entry = entry_by_id[source_id]
+            existing = _existing_after_freeze(session, source_id, frozen_at)
+            if existing:
+                state["results"][source_id] = existing
+                continue
+            schedule = (
+                session.query(SourceScheduleRecord)
+                .filter_by(source_id=source_id)
+                .one_or_none()
+            )
+            if schedule is None:
+                raise CatchupSafetyError("frozen manifest source lost its durable schedule")
+            cooling = _utc(schedule.cooldown_until)
+            if cooling is not None and cooling > datetime.now(timezone.utc):
+                state["results"][source_id] = {
+                    "status": "deferred",
+                    "reason": "source_cooldown_active",
+                }
+                continue
+            if _manifest_due_at(entry) > frozen_at:
+                raise CatchupSafetyError("frozen manifest contains a source not due at creation")
+            candidates.append(source_id)
+            if len(candidates) >= MAX_PARALLEL_SOURCE_WORKERS:
+                break
+
+        if not candidates:
+            state["zero_progress_steps"] = (
+                int(state.get("zero_progress_steps", 0))
+                + (1 if len(state["results"]) == progress_before else 0)
+            )
+            if int(state.get("zero_progress_steps", 0)) >= MAX_ZERO_PROGRESS_STEPS:
+                raise CatchupSafetyError("catch-up made no progress across repeated checkpoints")
+            state["status"] = (
+                "READY_TO_FINALIZE"
+                if not pending_manifest_sources(entries, state["results"])
+                else "STEP_COMPLETE"
+            )
+            state["last_snapshot"] = pre
+            _write_json(state_path, state)
+            return state
+
+        maximum = safe_wave_size(state, int(pre["database_bytes"]), len(candidates))
+        if maximum == 0:
+            _mark_maintenance_required(
+                state, pre, "projected_next_wave_reaches_390_mib"
+            )
+            _write_json(state_path, state)
+            return state
+
+        first_is_slow = _is_historically_slow_source(session, candidates[0])
+        if first_is_slow:
+            wave_sources = candidates[:1]
+        else:
+            wave_sources = []
+            for source_id in candidates[:maximum]:
+                if wave_sources and _is_historically_slow_source(session, source_id):
+                    break
+                wave_sources.append(source_id)
+        worker_timeout = _adaptive_wave_timeout_seconds(session, wave_sources)
+        founder_baseline = manifest["founder_state_at_freeze"]
+    finally:
+        session.close()
+        engine.dispose()
+
+    wave_index = len(state.get("waves", []))
+    wave = _schedule_and_run_wave(
+        wave_sources,
+        wave_tag=f"step-{wave_index}",
+        manifest_ids=set(entry_by_id),
+        founder_state_baseline=founder_baseline,
+        frozen_due_at={
+            source_id: _manifest_due_at(entry_by_id[source_id])
+            for source_id in wave_sources
+        },
+        manifest_created_at=frozen_at,
+        worker_timeout_seconds=worker_timeout,
+    )
+    state.setdefault("waves", []).append(wave)
+    state["last_wave"] = wave
+    for source_id, result in wave["sources"].items():
+        state["results"][source_id] = result
+    state["last_snapshot"] = wave["snapshot"]
+    state["zero_progress_steps"] = 0
+
+    remaining = pending_manifest_sources(entries, state["results"])
+    if not remaining:
+        state["status"] = "READY_TO_FINALIZE"
+    else:
+        next_size = safe_wave_size(
+            state,
+            int(wave["database_bytes_after"]),
+            min(MAX_PARALLEL_SOURCE_WORKERS, len(remaining)),
+        )
+        if next_size == 0:
+            _mark_maintenance_required(
+                state, wave["snapshot"], "projected_next_wave_reaches_390_mib"
+            )
+        else:
+            state["status"] = "STEP_COMPLETE"
+    _write_json(state_path, state)
+    return state
 
 
 def run_cohort(
@@ -1246,6 +1549,7 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--freeze", action="store_true")
     group.add_argument("--cohort-index", type=int)
+    group.add_argument("--step", action="store_true")
     group.add_argument("--finalize", action="store_true")
     parser.add_argument(
         "--maintenance-run-id",
@@ -1257,6 +1561,8 @@ def main(argv: list[str] | None = None) -> int:
             result = freeze_live_manifest(args.state_file)
         elif args.finalize:
             result = finalize_live_run(args.state_file)
+        elif args.step:
+            result = run_step(args.state_file, args.maintenance_run_id)
         else:
             result = run_cohort(
                 args.state_file, args.cohort_index, args.maintenance_run_id
@@ -1277,8 +1583,9 @@ def main(argv: list[str] | None = None) -> int:
         "database_bytes": (result.get("last_snapshot") or {}).get("database_bytes", manifest["database_bytes_at_freeze"]),
     }, sort_keys=True))
     return 0 if result.get("status", "MANIFEST_FROZEN") in {
-        "MANIFEST_FROZEN", "COHORT_COMPLETE", "MAINTENANCE_REQUIRED",
-        "FINAL_MAINTENANCE_RECOMMENDED", "FINAL_VERIFIED",
+        "MANIFEST_FROZEN", "COHORT_COMPLETE", "STEP_COMPLETE",
+        "READY_TO_FINALIZE", "MAINTENANCE_REQUIRED", "CAPACITY_BLOCKED",
+        "NO_DUE_SOURCES", "FINAL_MAINTENANCE_RECOMMENDED", "FINAL_VERIFIED",
     } else 1
 
 
