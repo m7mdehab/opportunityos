@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="When a drain shard becomes idle, enqueue more sources that were already due at --due-before",
     )
     p.add_argument(
+        "--max-active-polls",
+        type=int,
+        default=None,
+        help="Bound active PENDING/RETRY/RUNNING poll_source jobs across concurrent shards",
+    )
+    p.add_argument(
         "--poll-source-only",
         action="store_true",
         help="Drain only poll_source jobs; used by disjoint bounded source-bootstrap shards",
@@ -148,6 +154,7 @@ def _drain(
     poll_source_only: bool = False,
     refill_due: bool = False,
     refill_due_before: datetime | None = None,
+    max_active_polls: int | None = None,
 ) -> int:
     effective_worker_id = worker_id or os.environ.get("OPOS_WORKER_ID") or "hosted-bootstrap"
 
@@ -183,13 +190,9 @@ def _drain(
                 registry=registry,
                 create_missing_schedules=False,
                 due_before=refill_due_before,
+                max_active_poll_sources=max_active_polls,
             )
             refill_session.commit()
-            active_jobs = (
-                refill_session.query(WorkerJobRecord)
-                .filter(WorkerJobRecord.status.in_(("PENDING", "RETRY", "RUNNING")))
-                .count()
-            )
             cutoff_naive = (
                 refill_due_before.astimezone(timezone.utc).replace(tzinfo=None)
                 if refill_due_before is not None
@@ -221,14 +224,13 @@ def _drain(
         reasons = {item.get("reason") for item in skipped}
         if "warning_capacity_ceiling" in reasons or "capacity_pause" in reasons:
             break
-        if not active_jobs and not remaining_due:
+        if not remaining_due:
             break
 
-        # Another shard owns or has just enqueued the bounded wave. Stay alive
-        # so five-way throughput does not collapse to one worker at refill
-        # boundaries. This is a short local wait, not another database poll.
-        time.sleep(0.5)
-    return processed
+        # Another shard owns the current bounded source wave. Stay alive so
+        # throughput does not collapse at refill boundaries, but wait locally
+        # long enough to avoid turning an idle shard into database chatter.
+        time.sleep(15.0)
     return processed
 
 
@@ -240,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--refill-due is permitted only with --mode drain")
     if args.refill_due and not args.due_before:
         raise SystemExit("--refill-due requires --due-before")
+    if args.max_active_polls is not None and args.max_active_polls <= 0:
+        raise SystemExit("--max-active-polls must be positive")
     due_before = None
     if args.due_before:
         try:
@@ -354,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
                         enqueue_kwargs["create_missing_schedules"] = False
                     if due_before is not None:
                         enqueue_kwargs["due_before"] = due_before
+                    if args.max_active_polls is not None:
+                        enqueue_kwargs["max_active_poll_sources"] = args.max_active_polls
                     items, _ = enqueue_due_sources(session, **enqueue_kwargs)
                     if args.source_id is not None and (
                         len(items) != 1 or items[0].get("source_id") != args.source_id
@@ -386,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.refill_due:
                 drain_kwargs["refill_due"] = True
                 drain_kwargs["refill_due_before"] = due_before
+                drain_kwargs["max_active_polls"] = args.max_active_polls
             processed = _drain(factory, **drain_kwargs)
 
         print(
