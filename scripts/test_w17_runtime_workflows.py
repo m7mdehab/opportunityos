@@ -69,21 +69,25 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("group: fr007-worker-drain", runtime_takeover)
         self.assertIn("cancel-in-progress: false", runtime_takeover)
 
-    def test_worker_drain_schedule_and_defaults(self):
-        workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
-        self.assertEqual(workflow.count('cron: "17 */12 * * *"'), 1)
-        self.assertNotIn("Temporary one-shot validation slot", workflow)
-        self.assertNotIn("\n  push:", workflow)
-        self.assertNotIn("github.event_name == 'push'", workflow)
-        # Manual defaults stay conservative; scheduled runs get enough capacity
-        # to clear the twice-daily due-source set without increasing source cadence.
-        self.assertIn('default: "30"', workflow)
-        self.assertIn('default: "480"', workflow)
-        self.assertIn("github.event_name == 'schedule' && '150'", workflow)
-        self.assertIn("github.event_name == 'schedule' && '2700'", workflow)
-        self.assertIn("RAW_MAX > 150 ? 150", workflow)
-        self.assertIn("RAW_BUDGET > 2700 ? 2700", workflow)
-        self.assertIn("CATCHUP_PARALLELISM_LIMIT_BYTES = 380 * 1024 * 1024", workflow)
+    def test_resilient_catchup_is_the_only_twice_daily_discovery_owner(self):
+        worker = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
+        catchup = (ROOT / ".github" / "workflows" / "fr007-due-source-overnight-catchup.yml").read_text(encoding="utf-8")
+        self.assertEqual(worker.count('cron: "17 */12 * * *"'), 0)
+        self.assertEqual(catchup.count('cron: "17 */12 * * *"'), 1)
+        self.assertNotIn("\n  push:", worker)
+        self.assertNotIn("github.event_name == 'push'", worker)
+        self.assertIn("options: [auto, freeze-manifest, run-cohort, finalize]", catchup)
+        self.assertIn("actions: write", catchup)
+        self.assertIn("timeout-minutes: 360", catchup)
+        self.assertIn("-f operation=auto", catchup)
+        self.assertIn("resume_catchup_run_id", catchup)
+        # Manual/reusable worker defaults stay conservative and cannot become
+        # an accidental second production scheduler.
+        self.assertIn('default: "30"', worker)
+        self.assertIn('default: "480"', worker)
+        self.assertIn("RAW_MAX > 150 ? 150", worker)
+        self.assertIn("RAW_BUDGET > 2700 ? 2700", worker)
+        self.assertIn("CATCHUP_PARALLELISM_LIMIT_BYTES = 380 * 1024 * 1024", worker)
 
     def test_worker_drain_unique_worker_id_per_shard(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
