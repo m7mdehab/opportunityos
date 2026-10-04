@@ -32,8 +32,8 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
 
     def test_backup_workflow_separates_daily_founder_state_from_monthly_integrity(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-encrypted-backup.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "17 2 * * *"', workflow)
-        self.assertIn('cron: "47 2 1 * *"', workflow)
+        self.assertIn('cron: "17 5 * * *"', workflow)
+        self.assertIn('cron: "47 5 1 * *"', workflow)
         self.assertIn("backup_class:", workflow)
         self.assertIn("founder_state", workflow)
         self.assertIn("integrity", workflow)
