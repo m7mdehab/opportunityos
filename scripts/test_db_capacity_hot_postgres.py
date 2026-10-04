@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from scripts.db_capacity_maintenance import (
     compact_hot_dimension_scores,
     hot_dimension_compaction_plan,
+    hot_dimension_invariant_summary,
 )
 from storage.models import MatchEvaluationRecord, OpportunityRecord
 
@@ -84,13 +85,18 @@ class HotEvaluationCapacityMaintenancePostgresTests(unittest.TestCase):
     def test_hot_compaction_preserves_live_contract_and_signal_tags(self) -> None:
         with self.engine.begin() as connection:
             before = hot_dimension_compaction_plan(connection)
+            invariant_before = hot_dimension_invariant_summary(connection)
             result = compact_hot_dimension_scores(connection, confirm=True)
+            invariant_after = hot_dimension_invariant_summary(connection)
             payload = connection.exec_driver_sql(
                 "SELECT dimension_scores_json FROM match_evaluations WHERE opportunity_id = %s",
                 (self.opp_id,),
             ).scalar_one()
 
         self.assertGreater(before["logical_savings_bytes"], 0)
+        self.assertGreaterEqual(invariant_before["invalid_rows"], 1)
+        self.assertEqual(invariant_after["invalid_rows"], 0)
+        self.assertGreaterEqual(invariant_after["rows_checked"], 1)
         self.assertGreaterEqual(result["rows_rewritten"], 1)
         dimensions = json.loads(payload)
         self.assertEqual(len(dimensions), 1)
