@@ -150,8 +150,7 @@ jobs:
     name: ops-worker-validation
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.ref == 'ops/run-worker-validation-now' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.head_ref == 'ops/run-worker-validation-now'
     needs: [governance]
     uses: ./.github/workflows/fr007-worker-drain.yml
     with:
