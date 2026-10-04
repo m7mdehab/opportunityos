@@ -36,6 +36,8 @@ on:
   schedule:
     # Founder-only cadence: twice daily to keep discovery fresh while bounding Supabase usage.
     - cron: "17 */12 * * *"
+    # Temporary one-shot validation slot; remove after today's run starts.
+    - cron: "26 17 * * *"
   push:
     branches:
       - main
