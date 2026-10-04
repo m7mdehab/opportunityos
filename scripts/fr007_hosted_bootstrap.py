@@ -23,7 +23,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, get_production_db_url
-from storage.models import WorkerJobRecord
+from storage.models import SourceScheduleRecord, WorkerJobRecord
 from worker.handlers import default_handler_registry
 from worker.scheduler import enqueue_due_sources, get_or_create_source_schedule, _parse_cadence_hours
 from worker.runner import WorkerRunner
@@ -46,6 +46,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-jobs", type=int, default=10)
     p.add_argument("--time-budget-seconds", type=float, default=300.0)
     p.add_argument("--worker-id", type=str, default=None, help="Explicit worker identity")
+    p.add_argument(
+        "--due-before",
+        type=str,
+        default=None,
+        help="Freeze due eligibility at this ISO-8601 UTC instant for one scheduled sweep",
+    )
+    p.add_argument(
+        "--refill-due",
+        action="store_true",
+        help="When a drain shard becomes idle, enqueue more sources that were already due at --due-before",
+    )
+    p.add_argument(
+        "--max-active-polls",
+        type=int,
+        default=None,
+        help="Bound active PENDING/RETRY/RUNNING poll_source jobs across concurrent shards",
+    )
     p.add_argument(
         "--poll-source-only",
         action="store_true",
@@ -135,6 +152,9 @@ def _drain(
     budget: float,
     worker_id: str | None = None,
     poll_source_only: bool = False,
+    refill_due: bool = False,
+    refill_due_before: datetime | None = None,
+    max_active_polls: int | None = None,
 ) -> int:
     effective_worker_id = worker_id or os.environ.get("OPOS_WORKER_ID") or "hosted-bootstrap"
 
@@ -155,10 +175,71 @@ def _drain(
     runner = WorkerRunner(session_factory, handlers, **runner_kwargs)
     started = time.monotonic()
     processed = 0
+    registry = SourceRegistry() if refill_due else None
     while processed < max_jobs and time.monotonic() - started < budget:
-        if not runner.run_once():
+        if runner.run_once():
+            processed += 1
+            continue
+        if not refill_due:
             break  # queue-empty is a successful bounded stop condition
-        processed += 1
+
+        refill_session = session_factory()
+        try:
+            items, skipped = enqueue_due_sources(
+                refill_session,
+                registry=registry,
+                create_missing_schedules=False,
+                due_before=refill_due_before,
+                max_active_poll_sources=max_active_polls,
+            )
+            refill_session.commit()
+            cutoff_naive = (
+                refill_due_before.astimezone(timezone.utc).replace(tzinfo=None)
+                if refill_due_before is not None
+                else datetime.now(timezone.utc).replace(tzinfo=None)
+            )
+            now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+            remaining_due = (
+                refill_session.query(SourceScheduleRecord)
+                .filter(
+                    SourceScheduleRecord.next_due_at <= cutoff_naive,
+                    (
+                        SourceScheduleRecord.cooldown_until.is_(None)
+                        | (SourceScheduleRecord.cooldown_until <= now_naive)
+                    ),
+                )
+                .count()
+            )
+            pending_poll_jobs = (
+                refill_session.query(WorkerJobRecord)
+                .filter(
+                    WorkerJobRecord.job_type == "poll_source",
+                    WorkerJobRecord.status.in_(("PENDING", "RETRY")),
+                )
+                .count()
+            )
+        except Exception:
+            refill_session.rollback()
+            raise
+        finally:
+            refill_session.close()
+
+        if items:
+            # New bounded work was committed. Loop immediately so this shard
+            # (or a sibling shard) can claim it without another cron tick.
+            continue
+
+        reasons = {item.get("reason") for item in skipped}
+        if "warning_capacity_ceiling" in reasons or "capacity_pause" in reasons:
+            break
+        if not remaining_due and not pending_poll_jobs:
+            break
+
+        # Another shard owns the current bounded source wave, or the final
+        # wave still has unclaimed poll jobs. Stay alive long enough to retain
+        # five-way throughput, but use a coarse local wait so idle workers do
+        # not recreate the database chatter this change is meant to remove.
+        time.sleep(15.0)
     return processed
 
 
@@ -166,6 +247,22 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.poll_source_only and args.mode != "drain":
         raise SystemExit("--poll-source-only is permitted only with --mode drain")
+    if args.refill_due and args.mode != "drain":
+        raise SystemExit("--refill-due is permitted only with --mode drain")
+    if args.refill_due and not args.due_before:
+        raise SystemExit("--refill-due requires --due-before")
+    if args.max_active_polls is not None and args.max_active_polls <= 0:
+        raise SystemExit("--max-active-polls must be positive")
+    due_before = None
+    if args.due_before:
+        try:
+            due_before = datetime.fromisoformat(args.due_before.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise SystemExit("--due-before must be a valid ISO-8601 timestamp") from exc
+        if due_before.tzinfo is None:
+            due_before = due_before.replace(tzinfo=timezone.utc)
+        else:
+            due_before = due_before.astimezone(timezone.utc)
     selected_source_ids = None
     if args.source_ids is not None:
         selected_source_ids = [part.strip() for part in args.source_ids.split(",") if part.strip()]
@@ -268,6 +365,10 @@ def main(argv: list[str] | None = None) -> int:
                         # Routine cron/manual enqueue only advances schedules
                         # created by explicit, bounded source-bootstrap batches.
                         enqueue_kwargs["create_missing_schedules"] = False
+                    if due_before is not None:
+                        enqueue_kwargs["due_before"] = due_before
+                    if args.max_active_polls is not None:
+                        enqueue_kwargs["max_active_poll_sources"] = args.max_active_polls
                     items, _ = enqueue_due_sources(session, **enqueue_kwargs)
                     if args.source_id is not None and (
                         len(items) != 1 or items[0].get("source_id") != args.source_id
@@ -297,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
             }
             if args.poll_source_only:
                 drain_kwargs["poll_source_only"] = True
+            if args.refill_due:
+                drain_kwargs["refill_due"] = True
+                drain_kwargs["refill_due_before"] = due_before
+                drain_kwargs["max_active_polls"] = args.max_active_polls
             processed = _drain(factory, **drain_kwargs)
 
         print(

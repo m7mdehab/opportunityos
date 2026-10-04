@@ -44,6 +44,12 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("source.dump.manifest.json", workflow)
         self.assertIn("secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL", workflow)
 
+    def test_hot_capacity_verification_stays_server_side(self):
+        workflow = (ROOT / ".github" / "workflows" / "fr007-hot-evaluation-capacity-reclaim.yml").read_text(encoding="utf-8")
+        self.assertIn("hot_dimension_invariant_summary", workflow)
+        self.assertNotIn("SELECT e.dimension_scores_json", workflow)
+        self.assertNotIn("dimensions = connection.execute", workflow)
+
     def test_worker_drain_five_shard_matrix_and_structure(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         # Enqueue phase exists and executes once (no matrix)
@@ -72,11 +78,19 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_worker_drain_schedule_and_defaults(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         self.assertIn('cron: "17 */12 * * *"', workflow)
-        # Scheduled/default per-shard parameters: 30 jobs, 480 seconds
+        # Manual/push defaults remain small, while a twice-daily sweep can
+        # converge the full due-at-start set without increasing cron frequency.
         self.assertIn('default: "30"', workflow)
         self.assertIn('default: "480"', workflow)
         self.assertIn("RAW_MAX > 150 ? 150", workflow)
         self.assertIn("RAW_BUDGET > 540 ? 540", workflow)
+        self.assertIn("MAX_JOBS=500", workflow)
+        self.assertIn("TIME_BUDGET=7200", workflow)
+        self.assertIn("--refill-due", workflow)
+        self.assertIn("--due-before", workflow)
+        self.assertIn("--max-active-polls 5", workflow)
+        self.assertIn("verify-scheduled-sweep:", workflow)
+        self.assertIn("remaining_due", workflow)
 
     def test_worker_drain_unique_worker_id_per_shard(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
@@ -86,7 +100,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_worker_drain_timeout_covers_historically_slow_source_poll(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         drain_section = workflow.split("drain:", 1)[1]
-        self.assertIn("timeout-minutes: 50", drain_section)
+        self.assertIn("timeout-minutes: 240", drain_section)
 
     def test_final_closure_fails_closed_on_piped_failures_and_direct_script_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")

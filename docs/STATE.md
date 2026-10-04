@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `1201803` — docs: document 12-hour monitoring cadence
+- **State generated at commit:** `1cd97c8` — fix: keep shards for unclaimed final-wave polls
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
