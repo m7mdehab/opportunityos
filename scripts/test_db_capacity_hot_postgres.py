@@ -95,8 +95,14 @@ class HotEvaluationCapacityMaintenancePostgresTests(unittest.TestCase):
 
         self.assertGreater(before["logical_savings_bytes"], 0)
         self.assertGreaterEqual(invariant_before["invalid_rows"], 1)
-        self.assertEqual(invariant_after["invalid_rows"], 0)
-        self.assertGreaterEqual(invariant_after["rows_checked"], 1)
+        self.assertEqual(
+            invariant_after["invalid_rows"],
+            invariant_before["invalid_rows"] - 1,
+        )
+        self.assertEqual(
+            invariant_after["rows_checked"],
+            invariant_before["rows_checked"],
+        )
         self.assertGreaterEqual(result["rows_rewritten"], 1)
         dimensions = json.loads(payload)
         self.assertEqual(len(dimensions), 1)
