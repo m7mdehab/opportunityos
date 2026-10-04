@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `4c1d959` — test: prevent push-driven live work from returning
+- **State generated at commit:** `f81fde5` — test: guard every live source-work entrypoint from push triggers
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
