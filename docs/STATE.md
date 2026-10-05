@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `e271700` — test: stress resilient catch-up timeout capacity and resume contracts
+- **State generated at commit:** `110f9ae` — test: prevent context-dependent GitHub workflow dispatch
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
