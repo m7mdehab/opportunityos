@@ -81,6 +81,9 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("timeout-minutes: 360", catchup)
         self.assertIn("-f operation=auto", catchup)
         self.assertIn("resume_catchup_run_id", catchup)
+        self.assertGreaterEqual(catchup.count('--repo "${GITHUB_REPOSITORY}"'), 2)
+        maintenance = (ROOT / ".github" / "workflows" / "fr007-hot-evaluation-capacity-reclaim.yml").read_text(encoding="utf-8")
+        self.assertIn('--repo "${GITHUB_REPOSITORY}"', maintenance)
         # Manual/reusable worker defaults stay conservative and cannot become
         # an accidental second production scheduler.
         self.assertIn('default: "30"', worker)

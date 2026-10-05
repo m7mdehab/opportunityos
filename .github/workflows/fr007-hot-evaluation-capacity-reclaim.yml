@@ -316,6 +316,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh workflow run fr007-due-source-overnight-catchup.yml \
+            --repo "${GITHUB_REPOSITORY}" \
             --ref main \
             -f operation=auto \
             -f previous_run_id="${{ inputs.resume_catchup_run_id }}" \
