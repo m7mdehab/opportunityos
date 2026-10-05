@@ -607,6 +607,8 @@ class MigrationHeadTests(unittest.TestCase):
         self.assertIn("retention-days: 30", workflow)
         self.assertIn("resume_catchup_run_id:", maintenance)
         self.assertIn("Resume the exact frozen catch-up checkpoint", maintenance)
+        self.assertIn('--repo "${GITHUB_REPOSITORY}"', maintenance)
+        self.assertGreaterEqual(workflow.count('--repo "${GITHUB_REPOSITORY}"'), 2)
 
 
 if __name__ == "__main__":
