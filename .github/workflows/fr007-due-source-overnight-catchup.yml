@@ -147,14 +147,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run fr007-due-source-overnight-catchup.yml             --ref main             -f operation=auto             -f previous_run_id="${{ github.run_id }}"
+          gh workflow run fr007-due-source-overnight-catchup.yml             --repo "${GITHUB_REPOSITORY}"             --ref main             -f operation=auto             -f previous_run_id="${{ github.run_id }}"
 
       - name: Request bounded maintenance before resuming
         if: ${{ steps.auto-step.outputs.status == 'MAINTENANCE_REQUIRED' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run fr007-hot-evaluation-capacity-reclaim.yml             --ref main             -f operation=maintenance-only             -f resume_catchup_run_id="${{ github.run_id }}"
+          gh workflow run fr007-hot-evaluation-capacity-reclaim.yml             --repo "${GITHUB_REPOSITORY}"             --ref main             -f operation=maintenance-only             -f resume_catchup_run_id="${{ github.run_id }}"
 
       - name: Surface capacity circuit-breaker
         if: ${{ steps.auto-step.outputs.status == 'CAPACITY_BLOCKED' }}
