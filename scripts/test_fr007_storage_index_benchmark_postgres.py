@@ -11,12 +11,28 @@ import unittest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
+from scripts.fr007_storage_reclamation import audit
+
 
 @unittest.skipUnless(
     os.environ.get("OPPORTUNITYOS_DB_URL", "").startswith("postgresql"),
     "requires disposable PostgreSQL service",
 )
 class CompactProvenanceIndexBenchmark(unittest.TestCase):
+    def test_production_audit_queries_run_on_disposable_postgres(self):
+        engine = create_engine(os.environ["OPPORTUNITYOS_DB_URL"], pool_pre_ping=True)
+        try:
+            with engine.connect() as connection:
+                self.assertEqual(connection.execute(text("SELECT current_database()")).scalar_one(), "opportunityos_test")
+                report = audit(connection)
+                self.assertGreater(report["database_bytes"], 0)
+                self.assertIn("compression_baseline", report)
+                self.assertEqual(len(report["index_targets"]), 4)
+                self.assertTrue(all("bytes" in target for target in report["index_targets"]))
+                self.assertNotIn("description", str(report["index_targets"]))
+        finally:
+            engine.dispose()
+
     def test_canonical_hex_decoding_preserves_uniqueness_and_saves_space(self):
         engine = create_engine(os.environ["OPPORTUNITYOS_DB_URL"], pool_pre_ping=True)
         try:
