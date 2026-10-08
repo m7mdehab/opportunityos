@@ -75,6 +75,15 @@ class StorageReclamationSafetyTests(unittest.TestCase):
                 reindex_one(db, "provenance_identity", confirm=True)
         db.exec_driver_sql.assert_not_called()
 
+    def test_reindex_requires_explicit_autocommit(self):
+        connection = MagicMock()
+        connection.engine.dialect.name = "postgresql"
+        connection.get_execution_options.return_value = {}
+        with patch.dict(os.environ, {"OPOS_STORAGE_REINDEX_APPROVED": "1"}):
+            with self.assertRaisesRegex(RuntimeError, "AUTOCOMMIT"):
+                reindex_one(connection, "provenance_identity", confirm=True)
+        connection.exec_driver_sql.assert_not_called()
+
     def test_reindex_rejects_untrusted_index_identifier(self):
         with self.assertRaisesRegex(ValueError, "allowlist"):
             reindex_one(MagicMock(), 'x; DROP TABLE opportunities;', confirm=True)
