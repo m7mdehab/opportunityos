@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `b1758fe` — test: benchmark lossless binary-checksum uniqueness on disposable PostgreSQL
+- **State generated at commit:** `e701e1f` — test: fail closed for non-autocommit concurrent index maintenance
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
