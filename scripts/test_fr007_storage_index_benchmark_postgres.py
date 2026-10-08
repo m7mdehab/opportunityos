@@ -52,7 +52,7 @@ class CompactProvenanceIndexBenchmark(unittest.TestCase):
                     connection.exec_driver_sql("""
                         INSERT INTO fp_compact_benchmark
                         SELECT 'source:' || md5((n / 12)::text),
-                               'field_' || (n % 12),
+                               'field_' || mod(n, 12),
                                md5((n / 12)::text) || md5('checksum-' || (n / 12)::text)
                         FROM generate_series(1, 30000) AS n
                     """)
