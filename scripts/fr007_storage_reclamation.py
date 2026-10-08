@@ -201,10 +201,11 @@ def reindex_one(connection, target: str, *, confirm: bool) -> dict[str, Any]:
         raise RuntimeError("index maintenance requires --confirm and OPOS_STORAGE_REINDEX_APPROVED=1")
     if connection.engine.dialect.name != "postgresql":
         raise RuntimeError("online REINDEX is PostgreSQL-only")
-    if connection.get_isolation_level() != "READ COMMITTED":
-        # AUTOCOMMIT may report the default READ COMMITTED isolation level;
-        # the CLI sets execution_options(isolation_level='AUTOCOMMIT').
-        raise RuntimeError("unexpected isolation level")
+    if connection.get_execution_options().get("isolation_level") != "AUTOCOMMIT":
+        # REINDEX CONCURRENTLY fails in a transaction block. Reject callers
+        # using implicit SQLAlchemy transactions rather than guessing from
+        # get_isolation_level(), which can report READ COMMITTED in autocommit.
+        raise RuntimeError("online REINDEX requires an explicit AUTOCOMMIT connection")
 
     before = audit(connection)
     old = next(row for row in before["index_targets"] if row["name"] == target)
