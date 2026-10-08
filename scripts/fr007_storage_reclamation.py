@@ -122,6 +122,38 @@ def _active_job_count(connection) -> int:
     """)).scalar_one())
 
 
+def compression_baseline(connection) -> list[dict[str, Any]]:
+    """Return server-aggregated TOAST metadata, never source/evaluation values."""
+    queries = {
+        "opportunities.description": """
+            SELECT count(*) FILTER (WHERE description IS NOT NULL)::bigint AS populated,
+                   count(*) FILTER (WHERE pg_column_compression(description) = 'pglz')::bigint AS pglz,
+                   count(*) FILTER (WHERE pg_column_compression(description) = 'lz4')::bigint AS lz4,
+                   COALESCE(sum(pg_column_size(description)), 0)::bigint AS stored_bytes
+            FROM public.opportunities WHERE lifecycle_tier IN ('hot', 'protected')
+        """,
+        "match_evaluations.dimension_scores_json": """
+            SELECT count(*) FILTER (WHERE dimension_scores_json IS NOT NULL)::bigint AS populated,
+                   count(*) FILTER (WHERE pg_column_compression(dimension_scores_json) = 'pglz')::bigint AS pglz,
+                   count(*) FILTER (WHERE pg_column_compression(dimension_scores_json) = 'lz4')::bigint AS lz4,
+                   COALESCE(sum(pg_column_size(dimension_scores_json)), 0)::bigint AS stored_bytes
+            FROM public.match_evaluations
+        """,
+        "match_evaluations.evaluation_detail_json": """
+            SELECT count(*) FILTER (WHERE evaluation_detail_json IS NOT NULL)::bigint AS populated,
+                   count(*) FILTER (WHERE pg_column_compression(evaluation_detail_json) = 'pglz')::bigint AS pglz,
+                   count(*) FILTER (WHERE pg_column_compression(evaluation_detail_json) = 'lz4')::bigint AS lz4,
+                   COALESCE(sum(pg_column_size(evaluation_detail_json)), 0)::bigint AS stored_bytes
+            FROM public.match_evaluations
+        """,
+    }
+    return [
+        {"field": name, **{key: int(value or 0) for key, value in
+                          connection.execute(text(sql)).mappings().one().items()}}
+        for name, sql in queries.items()
+    ]
+
+
 def audit(connection) -> dict[str, Any]:
     if connection.engine.dialect.name != "postgresql":
         raise RuntimeError("storage audit requires PostgreSQL")
@@ -156,6 +188,7 @@ def audit(connection) -> dict[str, Any]:
         "warn_bytes": WARN_BYTES, "hard_stop_bytes": HARD_STOP_BYTES,
         "provider_limit_bytes": PROVIDER_LIMIT_BYTES,
         "relations": [dict(row) for row in relation_rows],
+        "compression_baseline": compression_baseline(connection),
         "index_targets": targets,
         "note": "Index rebuilds can reduce bloat but cannot remove live row data; savings are unproven until measured.",
     }
