@@ -205,4 +205,4 @@ Once a brief is genuinely closed, freeze it absent a concrete regression. Do not
 - CI economics and execution-surface policy: `docs/CI_EFFICIENCY_POLICY.md`
 
 ## Owner CI testing override — 2026-10-13
-See `.github/CI_EXECUTION_POLICY.md`: existing Free CI credits are an authorized testing budget. Run necessary test/acceptance jobs, conserve duplicate runs, do not block work just to save credits, and never infer another project's budget. No paid upgrades or bypassed release/privacy gates.
+See `docs/CI_EFFICIENCY_POLICY.md` and the private-source `.github/CI_EXECUTION_POLICY.md`: existing Free CI credits are an authorized testing budget. Run necessary test/acceptance jobs, conserve duplicate runs, do not block work just to save credits, and never infer another project's budget. No paid upgrades or bypassed release/privacy gates.
