@@ -70,8 +70,15 @@ jobs:
           pip install -e ".[dev]"
       - name: Run Database Migrations
         run: alembic upgrade head
+      - name: Run Focused Storage Reclamation Tests
+        run: >-
+          python -m unittest -v
+          scripts.test_fr007_storage_reclamation
+          scripts.test_fr007_storage_index_benchmark_postgres
       - name: Run Full Subsystem Test Suite
-        run: python -m unittest discover -v 2>&1 | tee full-test.log
+        run: |
+          set -o pipefail
+          python -m unittest discover -v 2>&1 | tee full-test.log
       - name: Upload backend test log
         if: always()
         uses: actions/upload-artifact@v4

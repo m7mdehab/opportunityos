@@ -1,0 +1,66 @@
+name: FR-007 guarded storage reclamation
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Read-only audit or one capacity-gated index rebuild
+        type: choice
+        required: true
+        default: audit
+        options: [audit, reindex]
+      index:
+        description: Allowlisted index (ignored for audit)
+        type: choice
+        required: true
+        default: provenance_identity
+        options:
+          - provenance_identity
+          - provenance_opportunity
+          - opportunity_search
+          - evaluation_identity
+      confirm:
+        description: I approve one online REINDEX only when every safety preflight passes
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-worker-drain
+  cancel-in-progress: false
+
+jobs:
+  capacity-audit:
+    if: github.ref == 'refs/heads/main'
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Read-only footprint audit or approved one-index maintenance
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          OPOS_STORAGE_REINDEX_APPROVED: ${{ inputs.operation == 'reindex' && inputs.confirm && '1' || '0' }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          PYTHONPATH: ${{ github.workspace }}
+          OPERATION: ${{ inputs.operation }}
+          INDEX: ${{ inputs.index }}
+        run: |
+          set -euo pipefail
+          if [[ "${OPERATION}" == "reindex" ]]; then
+            if [[ "${OPOS_STORAGE_REINDEX_APPROVED}" != "1" ]]; then
+              echo "::error::Explicit reindex approval is required"
+              exit 1
+            fi
+            python scripts/fr007_storage_reclamation.py --index "${INDEX}" --confirm
+          else
+            python scripts/fr007_storage_reclamation.py
+          fi
