@@ -1,3 +1,5 @@
+> **BINDING OWNER CI/CD CREDIT RULE (2026-11-18):** All LLMs, coding agents and human contributors MUST read [CI_CREDIT_GUARDRAILS.md](CI_CREDIT_GUARDRAILS.md) BEFORE triggering any hosted testing, CI or deployment. Routine iteration spends **ZERO** hosted minutes. Run only change-relevant checks with verified remaining quota; do not duplicate full suites across providers. Preserve every required security, production, payment, backup and independent-monitoring gate. Project-specific stricter safeguards remain authoritative.
+
 # OpportunityOS Agent Instructions
 
 OpportunityOS is an opportunity-acquisition platform for MENA, beginning with a founder-focused dual track for employment and independent professional work and expanding only through evidence-backed phases.
